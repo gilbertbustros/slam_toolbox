@@ -58,6 +58,9 @@ public:
   // get a node's current pose yaw
   virtual void GetNodeOrientation(const int & unique_id, double & pose);
 
+  // Freezes all current nodes, making them constant during optimization
+  virtual void FreezeNodes();
+
 private:
   // karto
   karto::ScanSolver::IdPoseVector corrections_;

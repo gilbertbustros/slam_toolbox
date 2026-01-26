@@ -23,6 +23,36 @@
 #include "slam_toolbox/slam_toolbox_common.hpp"
 #include "slam_toolbox/serialization.hpp"
 
+namespace
+{
+void logLaserParams(
+  const rclcpp::Logger & logger, const char * label, const karto::LaserRangeFinder * laser)
+{
+  if (!laser) {
+    RCLCPP_INFO(logger, "%s: laser is null", label);
+    return;
+  }
+
+  const auto & offset = laser->GetOffsetPose();
+  RCLCPP_INFO(
+    logger,
+    "%s: name=[%s] beams=%u min_angle=%.6f max_angle=%.6f ang_res=%.6f "
+    "min_range=%.3f max_range=%.3f range_thresh=%.3f offset=[%.3f, %.3f, %.3f]",
+    label,
+    laser->GetName().GetName().c_str(),
+    static_cast<unsigned int>(laser->GetNumberOfRangeReadings()),
+    laser->GetMinimumAngle(),
+    laser->GetMaximumAngle(),
+    laser->GetAngularResolution(),
+    laser->GetMinimumRange(),
+    laser->GetMaximumRange(),
+    laser->GetRangeThreshold(),
+    offset.GetX(),
+    offset.GetY(),
+    offset.GetHeading());
+}
+}  // namespace
+
 namespace slam_toolbox
 {
 
@@ -616,6 +646,19 @@ LaserRangeFinder * SlamToolbox::getLaser(
     try {
       lasers_[frame] = laser_assistant_->toLaserMetadata(*scan);
       dataset_->Add(lasers_[frame].getLaser(), true);
+      RCLCPP_INFO(
+        get_logger(),
+        "runtime scan: frame=[%s] ranges=%zu angle_min=%.6f angle_max=%.6f angle_inc=%.6f "
+        "range_min=%.3f range_max=%.3f",
+        frame.c_str(),
+        scan->ranges.size(),
+        scan->angle_min,
+        scan->angle_max,
+        scan->angle_increment,
+        scan->range_min,
+        scan->range_max);
+      std::string label = std::string("runtime scan sensor frame=") + frame;
+      logLaserParams(get_logger(), label.c_str(), lasers_[frame].getLaser());
     } catch (tf2::TransformException & e) {
       RCLCPP_ERROR(get_logger(), "Failed to compute laser pose, "
         "aborting initialization (%s)", e.what());
@@ -1006,6 +1049,9 @@ void SlamToolbox::loadSerializedPoseGraph(
     dataset_->GetLasers()[0]);
   Sensor * pSensor = dynamic_cast<Sensor *>(laser);
   if (pSensor) {
+    RCLCPP_INFO(get_logger(), "Registering sensor from deserialized pose graph: [%s]",
+      pSensor->GetName().GetName().c_str());
+    logLaserParams(get_logger(), "deserialized pose graph sensor", laser);
     SensorManager::GetInstance()->RegisterSensor(pSensor);
     lasers_.clear();
   } else {

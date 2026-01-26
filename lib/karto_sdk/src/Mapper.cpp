@@ -1546,7 +1546,7 @@ kt_bool MapperGraph::TryCloseLoop(LocalizedRangeScan * pScan, const Name & rSens
 
         pScan->SetSensorPose(bestPose);
         LinkChainToScan(candidateChain, pScan, bestPose, covariance);
-        CorrectPoses();
+        // CorrectPoses();
 
         m_pMapper->FireEndLoopClosure("Loop closed!");
 
@@ -1632,6 +1632,7 @@ void MapperGraph::LinkScans(
     pEdge->SetLabel(new LinkInfo(pFromScan->GetCorrectedPose(), pToScan->GetCorrectedAt(rMean), rCovariance));
     if (m_pMapper->m_pScanOptimizer != NULL) {
       m_pMapper->m_pScanOptimizer->AddConstraint(pEdge);
+      m_HasNewConstraints = true;
     }
   }
 }
@@ -1676,6 +1677,8 @@ void MapperGraph::LinkChainToScan(
   if (squaredDistance <
     math::Square(m_pMapper->m_pLinkScanMaximumDistance->GetValue()) + KT_TOLERANCE)
   {
+    std::cout << "Linking scan " << pScan->GetStateId() <<
+      " to chain via scan " << pClosestScan->GetStateId() << std::endl;
     LinkScans(pClosestScan, pScan, rMean, rCovariance);
   }
 }
@@ -2026,6 +2029,7 @@ void MapperGraph::CorrectPoses()
     }
 
     pSolver->Clear();
+    m_HasNewConstraints = false;
   }
 }
 
@@ -2929,9 +2933,18 @@ kt_bool Mapper::ProcessLocalization(LocalizedRangeScan * pScan, Matrix3 * covari
       std::vector<Name> deviceNames = m_pMapperSensorManager->GetSensorNames();
       const_forEach(std::vector<Name>, &deviceNames)
       {
-        m_pGraph->TryCloseLoop(pScan, *iter);
+        bool loop_closed = m_pGraph->TryCloseLoop(pScan, *iter);
+        if (loop_closed) {
+          std::cout << "LOOP CLOSED!!!!" << std::endl;
+        }
       }
     }
+
+  }
+
+  if (m_pGraph->HasNewConstraints()) {
+    std::cout << "Optimizing graph" << std::endl;
+    m_pGraph->CorrectPoses();
   }
 
   m_pMapperSensorManager->SetLastScan(pScan);

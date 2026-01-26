@@ -479,6 +479,30 @@ std::unordered_map<int, Eigen::Vector3d> * CeresSolver::getGraph()
   return nodes_;
 }
 
+/*****************************************************************************/
+void CeresSolver::FreezeNodes()
+/*****************************************************************************/
+{
+  boost::mutex::scoped_lock lock(nodes_mutex_);
+
+  int frozen_count = 0;
+  for (auto & node : *nodes_) {
+    if (problem_->HasParameterBlock(&node.second(0)) &&
+        problem_->HasParameterBlock(&node.second(1)) &&
+        problem_->HasParameterBlock(&node.second(2)))
+    {
+      problem_->SetParameterBlockConstant(&node.second(0));
+      problem_->SetParameterBlockConstant(&node.second(1));
+      problem_->SetParameterBlockConstant(&node.second(2));
+      ++frozen_count;
+    }
+  }
+
+  was_constant_set_ = true;
+
+  RCLCPP_INFO(logger_, "CeresSolver: Froze %d nodes from deserialized map.", frozen_count);
+}
+
 }  // namespace solver_plugins
 
 #include "pluginlib/class_list_macros.hpp"

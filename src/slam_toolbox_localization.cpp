@@ -141,7 +141,15 @@ bool LocalizationSlamToolbox::deserializePoseGraphCallback(
       "in localization mode.");
     return false;
   }
-  return SlamToolbox::deserializePoseGraphCallback(request_header, req, resp);
+
+  bool success = SlamToolbox::deserializePoseGraphCallback(request_header, req, resp);
+
+  if (success) {
+    boost::mutex::scoped_lock lock(smapper_mutex_);
+    smapper_->getMapper()->getScanSolver()->FreezeNodes();
+  }
+
+  return success;
 }
 
 /*****************************************************************************/

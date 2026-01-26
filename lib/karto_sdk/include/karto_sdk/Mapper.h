@@ -815,6 +815,10 @@ public:
    */
   void UpdateLoopScanMatcher(kt_double rangeThreshold);
 
+  kt_bool HasNewConstraints() const {
+    return m_HasNewConstraints;
+  }
+
 private:
   /**
    * Gets the vertex associated with the given scan
@@ -926,6 +930,9 @@ private:
    */
   GraphTraversal<LocalizedRangeScan> * m_pTraversal;
 
+  // Boolean signaling new constraints were added to the graph
+  kt_bool m_HasNewConstraints;
+
   /**
    * Serialization: class MapperGraph
    */
@@ -1026,6 +1033,14 @@ public:
    * Resets the solver for reinitialization
    */
   virtual void Reset()
+  {
+  }
+
+  /**
+   * Freezes all current nodes in the solver, making them constant during optimization.
+   * Call this after deserializing a pose graph to prevent loaded nodes from being modified.
+   */
+  virtual void FreezeNodes()
   {
   }
 
