@@ -64,6 +64,13 @@ void CeresSolver::Configure(rclcpp_lifecycle::LifecycleNode::SharedPtr node)
   }
   loss_fn = node->get_parameter("ceres_loss_function").as_string();
 
+  if (!node->has_parameter("ceres_loss_function_scale")) {
+    node->declare_parameter(
+      "ceres_loss_function_scale",
+      rclcpp::ParameterValue(0.7));
+  }
+  double loss_scale = node->get_parameter("ceres_loss_function_scale").as_double();
+
   if (!node->has_parameter("mode")) {
     node->declare_parameter(
       "mode",
@@ -84,13 +91,13 @@ void CeresSolver::Configure(rclcpp_lifecycle::LifecycleNode::SharedPtr node)
   if (loss_fn == "HuberLoss") {
     RCLCPP_INFO(
       node->get_logger(),
-      "CeresSolver: Using HuberLoss loss function.");
-    loss_function_ = new ceres::HuberLoss(0.7);
+      "CeresSolver: Using HuberLoss loss function with scale %.2f.", loss_scale);
+    loss_function_ = new ceres::HuberLoss(loss_scale);
   } else if (loss_fn == "CauchyLoss") {
     RCLCPP_INFO(
       node->get_logger(),
-      "CeresSolver: Using CauchyLoss loss function.");
-    loss_function_ = new ceres::CauchyLoss(0.7);
+      "CeresSolver: Using CauchyLoss loss function with scale %.2f.", loss_scale);
+    loss_function_ = new ceres::CauchyLoss(loss_scale);
   }
 
   // choose linear solver default CHOL
@@ -244,6 +251,20 @@ void CeresSolver::Compute()
   ceres::Solve(options_, problem_, &summary);
   if (debug_logging_) {
     std::cout << summary.FullReport() << '\n';
+  }
+
+  if (loss_function_ != NULL) {
+    // When a loss function is active, Ceres reports both the raw cost (squared
+    // residuals) and the cost after applying the loss. If these differ, the
+    // loss function is actively downweighting outlier constraints.
+    RCLCPP_INFO(
+      logger_,
+      "CeresSolver: residuals=%d, initial_cost=%.4f, final_cost=%.4f, "
+      "iterations=%d",
+      summary.num_residual_blocks,
+      summary.initial_cost,
+      summary.final_cost,
+      static_cast<int>(summary.iterations.size()));
   }
 
   if (!summary.IsSolutionUsable()) {

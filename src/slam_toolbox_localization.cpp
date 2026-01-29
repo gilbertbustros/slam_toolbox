@@ -145,6 +145,7 @@ bool LocalizationSlamToolbox::deserializePoseGraphCallback(
   bool success = SlamToolbox::deserializePoseGraphCallback(request_header, req, resp);
 
   if (success) {
+    RCLCPP_INFO(get_logger(), "Freezing deserialized nodes! Original graph will not be optimized.");
     boost::mutex::scoped_lock lock(smapper_mutex_);
     smapper_->getMapper()->getScanSolver()->FreezeNodes();
   }
