@@ -190,7 +190,9 @@ CallbackReturn SlamToolbox::on_activate(const rclcpp_lifecycle::State &)
       boost::bind(&SlamToolbox::publishTransformLoop,
       this, transform_publish_period)));
   threads_.push_back(std::make_unique<boost::thread>(
-      boost::bind(&SlamToolbox::publishVisualizations, this)));
+      boost::bind(&SlamToolbox::publishMapLoop, this)));
+  threads_.push_back(std::make_unique<boost::thread>(
+      boost::bind(&SlamToolbox::publishGraphLoop, this)));
 
   if (use_lifecycle_manager_) {
     // create bond connection
@@ -527,9 +529,19 @@ void SlamToolbox::publishTransformLoop(
 }
 
 /*****************************************************************************/
-void SlamToolbox::publishVisualizations()
+void SlamToolbox::publishMapLoop()
 /*****************************************************************************/
 {
+  bool publish_occupancy_grid = true;
+  if (!this->has_parameter("publish_occupancy_grid")) {
+    this->declare_parameter("publish_occupancy_grid", publish_occupancy_grid);
+  }
+  publish_occupancy_grid = this->get_parameter("publish_occupancy_grid").as_bool();
+
+  if (!publish_occupancy_grid) {
+    return;
+  }
+
   nav_msgs::msg::OccupancyGrid & og = map_.map;
   og.info.resolution = resolution_;
   og.info.origin.position.x = 0.0;
@@ -551,6 +563,23 @@ void SlamToolbox::publishVisualizations()
   while (rclcpp::ok()) {
     boost::this_thread::interruption_point();
     updateMap();
+    r.sleep();
+  }
+}
+
+/*****************************************************************************/
+void SlamToolbox::publishGraphLoop()
+/*****************************************************************************/
+{
+  double graph_update_interval = 0.5;
+  if (!this->has_parameter("graph_update_interval")) {
+    this->declare_parameter("graph_update_interval", graph_update_interval);
+  }
+  graph_update_interval = this->get_parameter("graph_update_interval").as_double();
+  rclcpp::Rate r(1.0 / graph_update_interval);
+
+  while (rclcpp::ok()) {
+    boost::this_thread::interruption_point();
     if (!isPaused(VISUALIZING_GRAPH)) {
       boost::mutex::scoped_lock lock(smapper_mutex_);
       closure_assistant_->publishGraph();

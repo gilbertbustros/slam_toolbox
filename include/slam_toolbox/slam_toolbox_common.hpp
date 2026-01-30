@@ -82,7 +82,8 @@ public:
 
 protected:
   // threads
-  void publishVisualizations();
+  void publishMapLoop();
+  void publishGraphLoop();
   void publishTransformLoop(const double & transform_publish_period);
 
   // setup

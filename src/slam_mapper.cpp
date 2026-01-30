@@ -335,6 +335,28 @@ void SMapper::configure(const NodeT & node)
   node->get_parameter("coarse_angle_resolution", coarse_angle_resolution);
   mapper_->setParamCoarseAngleResolution(coarse_angle_resolution);
 
+  // Loop closure angle search params (default to same as sequential matching)
+  double loop_search_angle_offset = coarse_search_angle_offset;
+  if (!node->has_parameter("loop_search_angle_offset")) {
+    node->declare_parameter("loop_search_angle_offset", loop_search_angle_offset);
+  }
+  node->get_parameter("loop_search_angle_offset", loop_search_angle_offset);
+  mapper_->setParamLoopCoarseSearchAngleOffset(loop_search_angle_offset);
+
+  double loop_angle_resolution = coarse_angle_resolution;
+  if (!node->has_parameter("loop_angle_resolution")) {
+    node->declare_parameter("loop_angle_resolution", loop_angle_resolution);
+  }
+  node->get_parameter("loop_angle_resolution", loop_angle_resolution);
+  mapper_->setParamLoopCoarseAngleResolution(loop_angle_resolution);
+
+  double loop_fine_search_angle_offset = fine_search_angle_offset;
+  if (!node->has_parameter("loop_fine_search_angle_offset")) {
+    node->declare_parameter("loop_fine_search_angle_offset", loop_fine_search_angle_offset);
+  }
+  node->get_parameter("loop_fine_search_angle_offset", loop_fine_search_angle_offset);
+  mapper_->setParamLoopFineSearchAngleOffset(loop_fine_search_angle_offset);
+
   double minimum_angle_penalty = 0.9;
   if (!node->has_parameter("minimum_angle_penalty")) {
     node->declare_parameter("minimum_angle_penalty", minimum_angle_penalty);

@@ -476,7 +476,9 @@ ScanMatcher::~ScanMatcher()
 
 ScanMatcher * ScanMatcher::Create(
   Mapper * pMapper, kt_double searchSize, kt_double resolution,
-  kt_double smearDeviation, kt_double rangeThreshold)
+  kt_double smearDeviation, kt_double rangeThreshold,
+  kt_double coarseSearchAngleOffset, kt_double coarseAngleResolution,
+  kt_double fineSearchAngleOffset)
 {
   // invalid parameters
   if (resolution <= 0) {
@@ -517,6 +519,9 @@ ScanMatcher * ScanMatcher::Create(
   pScanMatcher->m_pCorrelationGrid = pCorrelationGrid;
   pScanMatcher->m_pSearchSpaceProbs = pSearchSpaceProbs;
   pScanMatcher->m_pGridLookup = new GridIndexLookup<kt_int8u>(pCorrelationGrid);
+  pScanMatcher->m_coarseSearchAngleOffset = coarseSearchAngleOffset;
+  pScanMatcher->m_coarseAngleResolution = coarseAngleResolution;
+  pScanMatcher->m_fineSearchAngleOffset = fineSearchAngleOffset;
 
   return pScanMatcher;
 }
@@ -551,7 +556,7 @@ kt_double ScanMatcher::MatchScan(
     rCovariance(0, 0) = MAX_VARIANCE;    // XX
     rCovariance(1, 1) = MAX_VARIANCE;    // YY
     rCovariance(2, 2) =
-      4 * math::Square(m_pMapper->m_pCoarseAngleResolution->GetValue());    // TH*TH
+      4 * math::Square(m_coarseAngleResolution);    // TH*TH
 
     return 0.0;
   }
@@ -587,8 +592,8 @@ kt_double ScanMatcher::MatchScan(
   // actual scan-matching
   kt_double bestResponse = CorrelateScan(pScan, scanPose, coarseSearchOffset,
       coarseSearchResolution,
-      m_pMapper->m_pCoarseSearchAngleOffset->GetValue(),
-      m_pMapper->m_pCoarseAngleResolution->GetValue(),
+      m_coarseSearchAngleOffset,
+      m_coarseAngleResolution,
       doPenalize, rMean, rCovariance, false);
 
   if (m_pMapper->m_pUseResponseExpansion->GetValue() == true) {
@@ -597,12 +602,12 @@ kt_double ScanMatcher::MatchScan(
       std::cout << "Mapper Info: Expanding response search space!" << std::endl;
 #endif
       // try and increase search angle offset with 20 degrees and do another match
-      kt_double newSearchAngleOffset = m_pMapper->m_pCoarseSearchAngleOffset->GetValue();
+      kt_double newSearchAngleOffset = m_coarseSearchAngleOffset;
       for (kt_int32u i = 0; i < 3; i++) {
         newSearchAngleOffset += math::DegreesToRadians(20);
 
         bestResponse = CorrelateScan(pScan, scanPose, coarseSearchOffset, coarseSearchResolution,
-            newSearchAngleOffset, m_pMapper->m_pCoarseAngleResolution->GetValue(),
+            newSearchAngleOffset, m_coarseAngleResolution,
             doPenalize, rMean, rCovariance, false);
 
         if (math::DoubleEqual(bestResponse, 0.0) == false) {
@@ -623,8 +628,8 @@ kt_double ScanMatcher::MatchScan(
     Vector2<kt_double> fineSearchResolution(m_pCorrelationGrid->GetResolution(),
       m_pCorrelationGrid->GetResolution());
     bestResponse = CorrelateScan(pScan, rMean, fineSearchOffset, fineSearchResolution,
-        0.5 * m_pMapper->m_pCoarseAngleResolution->GetValue(),
-        m_pMapper->m_pFineSearchAngleOffset->GetValue(),
+        0.5 * m_coarseAngleResolution,
+        m_fineSearchAngleOffset,
         doPenalize, rMean, rCovariance, true);
   }
 
@@ -1397,7 +1402,10 @@ MapperGraph::MapperGraph(Mapper * pMapper, kt_double rangeThreshold)
   m_pLoopScanMatcher = ScanMatcher::Create(pMapper,
     m_pMapper->m_pLoopSearchSpaceDimension->GetValue(),
     m_pMapper->m_pLoopSearchSpaceResolution->GetValue(),
-    m_pMapper->m_pLoopSearchSpaceSmearDeviation->GetValue(), rangeThreshold);
+    m_pMapper->m_pLoopSearchSpaceSmearDeviation->GetValue(), rangeThreshold,
+    m_pMapper->m_pLoopCoarseSearchAngleOffset->GetValue(),
+    m_pMapper->m_pLoopCoarseAngleResolution->GetValue(),
+    m_pMapper->m_pLoopFineSearchAngleOffset->GetValue());
   assert(m_pLoopScanMatcher);
 
   m_pTraversal = new BreadthFirstTraversal<LocalizedRangeScan>(this);
@@ -1445,7 +1453,7 @@ void MapperGraph::AddEdges(LocalizedRangeScan * pScan, const Matrix3 & rCovarian
     if (!pPrevScan) {
       return;
     }
-    LinkScans(pPrevScan, pScan, pScan->GetSensorPose(), rCovariance);
+    LinkScans(pPrevScan, pScan, pScan->GetSensorPose(), rCovariance, true);
   }
 
   Pose2Vector means;
@@ -1473,6 +1481,7 @@ void MapperGraph::AddEdges(LocalizedRangeScan * pScan, const Matrix3 & rCovarian
         pScan,
         pSensorManager->GetScans(rCandidateSensorName),
         bestPose, covariance);
+      std::cout << "Linking to other robot scan" << std::endl;
       LinkScans(pSensorManager->GetScan(rCandidateSensorName, 0), pScan, bestPose, covariance);
 
       // only add to means and covariances if response was high "enough"
@@ -1486,6 +1495,7 @@ void MapperGraph::AddEdges(LocalizedRangeScan * pScan, const Matrix3 & rCovarian
     Pose2 scanPose = pScan->GetSensorPose();
     means.push_back(scanPose);
     covariances.push_back(rCovariance);
+    std::cout << "Linking to running scans" << std::endl;
     LinkChainToScan(pSensorManager->GetRunningScans(rSensorName), pScan, scanPose, rCovariance);
   }
 
@@ -1505,6 +1515,8 @@ kt_bool MapperGraph::TryCloseLoop(LocalizedRangeScan * pScan, const Name & rSens
 
   LocalizedRangeScanVector candidateChain = FindPossibleLoopClosure(pScan, rSensorName, scanIndex);
 
+  std::cout << "TryCloseLoop::Candidate chain size: " << candidateChain.size() << std::endl;
+
   while (!candidateChain.empty()) {
     Pose2 bestPose;
     Matrix3 covariance;
@@ -1517,6 +1529,8 @@ kt_bool MapperGraph::TryCloseLoop(LocalizedRangeScan * pScan, const Name & rSens
       std::endl;
     stream << "            var: " << covariance(0, 0) << ",  " << covariance(1, 1) <<
       " (< " << m_pMapper->m_pLoopMatchMaximumVarianceCoarse->GetValue() << ")";
+
+    std::cout << stream.str() << std::endl;
 
     m_pMapper->FireLoopClosureCheck(stream.str());
 
@@ -1540,6 +1554,7 @@ kt_bool MapperGraph::TryCloseLoop(LocalizedRangeScan * pScan, const Name & rSens
       m_pMapper->FireLoopClosureCheck(stream1.str());
 
       if (fineResponse < m_pMapper->m_pLoopMatchMinimumResponseFine->GetValue()) {
+        std::cout << "REJECTED BY FINE RESPONSE" << std::endl;
         m_pMapper->FireLoopClosureCheck("REJECTED!");
       } else {
         m_pMapper->FireBeginLoopClosure("Closing loop...");
@@ -1618,7 +1633,7 @@ Edge<LocalizedRangeScan> * MapperGraph::AddEdge(
 
 void MapperGraph::LinkScans(
   LocalizedRangeScan * pFromScan, LocalizedRangeScan * pToScan,
-  const Pose2 & rMean, const Matrix3 & rCovariance)
+  const Pose2 & rMean, const Matrix3 & rCovariance, bool is_previous_scan_link)
 {
   kt_bool isNewEdge = true;
   Edge<LocalizedRangeScan> * pEdge = AddEdge(pFromScan, pToScan, isNewEdge);
@@ -1632,6 +1647,8 @@ void MapperGraph::LinkScans(
     pEdge->SetLabel(new LinkInfo(pFromScan->GetCorrectedPose(), pToScan->GetCorrectedAt(rMean), rCovariance));
     if (m_pMapper->m_pScanOptimizer != NULL) {
       m_pMapper->m_pScanOptimizer->AddConstraint(pEdge);
+    }
+    if (!is_previous_scan_link) {
       m_HasNewConstraints = true;
     }
   }
@@ -1656,6 +1673,7 @@ void MapperGraph::LinkNearChains(
     if (response > m_pMapper->m_pLinkMatchMinimumResponseFine->GetValue() - KT_TOLERANCE) {
       rMeans.push_back(mean);
       rCovariances.push_back(covariance);
+      std::cout << "Linking near chain" << std::endl;
       LinkChainToScan(*iter, pScan, mean, covariance);
     }
   }
@@ -2041,7 +2059,10 @@ void MapperGraph::UpdateLoopScanMatcher(kt_double rangeThreshold)
   m_pLoopScanMatcher = ScanMatcher::Create(m_pMapper,
     m_pMapper->m_pLoopSearchSpaceDimension->GetValue(),
     m_pMapper->m_pLoopSearchSpaceResolution->GetValue(),
-    m_pMapper->m_pLoopSearchSpaceSmearDeviation->GetValue(), rangeThreshold);
+    m_pMapper->m_pLoopSearchSpaceSmearDeviation->GetValue(), rangeThreshold,
+    m_pMapper->m_pLoopCoarseSearchAngleOffset->GetValue(),
+    m_pMapper->m_pLoopCoarseAngleResolution->GetValue(),
+    m_pMapper->m_pLoopFineSearchAngleOffset->GetValue());
   assert(m_pLoopScanMatcher);
 }
 
@@ -2278,6 +2299,21 @@ void Mapper::InitializeParameters()
     "Resolution of angles to search during a coarse search.",
     math::DegreesToRadians(2), GetParameterManager());
 
+  m_pLoopCoarseSearchAngleOffset = new Parameter<kt_double>(
+    "LoopCoarseSearchAngleOffset",
+    "The range of angles to search during a coarse search for loop closure.",
+    math::DegreesToRadians(20), GetParameterManager());
+
+  m_pLoopCoarseAngleResolution = new Parameter<kt_double>(
+    "LoopCoarseAngleResolution",
+    "Resolution of angles to search during a coarse search for loop closure.",
+    math::DegreesToRadians(2), GetParameterManager());
+
+  m_pLoopFineSearchAngleOffset = new Parameter<kt_double>(
+    "LoopFineSearchAngleOffset",
+    "The range of angles to search during a fine search for loop closure.",
+    math::DegreesToRadians(0.2), GetParameterManager());
+
   m_pMinimumAnglePenalty = new Parameter<kt_double>(
     "MinimumAnglePenalty",
     "Minimum value of the angle penalty multiplier so scores do not become "
@@ -2448,6 +2484,21 @@ double Mapper::getParamCoarseAngleResolution()
   return static_cast<double>(m_pCoarseAngleResolution->GetValue());
 }
 
+double Mapper::getParamLoopCoarseSearchAngleOffset()
+{
+  return static_cast<double>(m_pLoopCoarseSearchAngleOffset->GetValue());
+}
+
+double Mapper::getParamLoopCoarseAngleResolution()
+{
+  return static_cast<double>(m_pLoopCoarseAngleResolution->GetValue());
+}
+
+double Mapper::getParamLoopFineSearchAngleOffset()
+{
+  return static_cast<double>(m_pLoopFineSearchAngleOffset->GetValue());
+}
+
 double Mapper::getParamMinimumAnglePenalty()
 {
   return static_cast<double>(m_pMinimumAnglePenalty->GetValue());
@@ -2610,6 +2661,21 @@ void Mapper::setParamCoarseAngleResolution(double d)
   m_pCoarseAngleResolution->SetValue((kt_double)d);
 }
 
+void Mapper::setParamLoopCoarseSearchAngleOffset(double d)
+{
+  m_pLoopCoarseSearchAngleOffset->SetValue((kt_double)d);
+}
+
+void Mapper::setParamLoopCoarseAngleResolution(double d)
+{
+  m_pLoopCoarseAngleResolution->SetValue((kt_double)d);
+}
+
+void Mapper::setParamLoopFineSearchAngleOffset(double d)
+{
+  m_pLoopFineSearchAngleOffset->SetValue((kt_double)d);
+}
+
 void Mapper::setParamMinimumAnglePenalty(double d)
 {
   m_pMinimumAnglePenalty->SetValue((kt_double)d);
@@ -2650,7 +2716,10 @@ void Mapper::Initialize(kt_double rangeThreshold)
     m_pCorrelationSearchSpaceDimension->GetValue(),
     m_pCorrelationSearchSpaceResolution->GetValue(),
     m_pCorrelationSearchSpaceSmearDeviation->GetValue(),
-    rangeThreshold);
+    rangeThreshold,
+    m_pCoarseSearchAngleOffset->GetValue(),
+    m_pCoarseAngleResolution->GetValue(),
+    m_pFineSearchAngleOffset->GetValue());
   assert(m_pSequentialScanMatcher);
 
   if (m_Deserialized) {
