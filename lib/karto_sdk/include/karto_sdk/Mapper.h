@@ -1360,10 +1360,7 @@ public:
     kt_double searchSize,
     kt_double resolution,
     kt_double smearDeviation,
-    kt_double rangeThreshold,
-    kt_double coarseSearchAngleOffset,
-    kt_double coarseAngleResolution,
-    kt_double fineSearchAngleOffset);
+    kt_double rangeThreshold);
 
   /**
    * Match given scan against set of scans
@@ -1503,10 +1500,7 @@ protected:
     m_pSearchSpaceProbs(NULL),
     m_pGridLookup(NULL),
     m_pPoseResponse(NULL),
-    m_doPenalize(false),
-    m_coarseSearchAngleOffset(0.0),
-    m_coarseAngleResolution(0.0),
-    m_fineSearchAngleOffset(0.0)
+    m_doPenalize(false)
   {
   }
 
@@ -1523,10 +1517,6 @@ private:
   kt_int32u m_nAngles;
   kt_double m_searchAngleResolution;
   kt_bool m_doPenalize;
-
-  kt_double m_coarseSearchAngleOffset;
-  kt_double m_coarseAngleResolution;
-  kt_double m_fineSearchAngleOffset;
 
   /**
    * Serialization: class ScanMatcher
@@ -1546,9 +1536,6 @@ private:
     ar & BOOST_SERIALIZATION_NVP(m_nAngles);
     ar & BOOST_SERIALIZATION_NVP(m_searchAngleResolution);
     ar & BOOST_SERIALIZATION_NVP(m_doPenalize);
-    // NOTE: m_coarseSearchAngleOffset, m_coarseAngleResolution, m_fineSearchAngleOffset
-    // are intentionally not serialized to preserve compatibility with existing map files.
-    // They are set via ScanMatcher::Create() or default-initialized.
 
     // Note - m_pPoseResponse is generally only ever defined within the
     // execution of ScanMatcher::CorrelateScan and used as a temporary
@@ -2371,17 +2358,12 @@ protected:
   Parameter<kt_double> * m_pDistanceVariancePenalty;
   Parameter<kt_double> * m_pAngleVariancePenalty;
 
-  // The range of angles to search during a coarse search and a finer search (sequential matching)
+  // The range of angles to search during a coarse search and a finer search
   Parameter<kt_double> * m_pFineSearchAngleOffset;
   Parameter<kt_double> * m_pCoarseSearchAngleOffset;
 
-  // Resolution of angles to search during a coarse search (sequential matching)
+  // Resolution of angles to search during a coarse search
   Parameter<kt_double> * m_pCoarseAngleResolution;
-
-  // Loop closure angle search params (independent from sequential matching)
-  Parameter<kt_double> * m_pLoopCoarseSearchAngleOffset;
-  Parameter<kt_double> * m_pLoopCoarseAngleResolution;
-  Parameter<kt_double> * m_pLoopFineSearchAngleOffset;
 
   // Minimum value of the penalty multiplier so scores do not
   // become too small
@@ -2439,8 +2421,6 @@ protected:
     ar & BOOST_SERIALIZATION_NVP(m_pFineSearchAngleOffset);
     ar & BOOST_SERIALIZATION_NVP(m_pCoarseSearchAngleOffset);
     ar & BOOST_SERIALIZATION_NVP(m_pCoarseAngleResolution);
-    // NOTE: m_pLoopCoarseSearchAngleOffset, m_pLoopCoarseAngleResolution, m_pLoopFineSearchAngleOffset
-    // are intentionally not serialized to preserve compatibility with existing map files.
     ar & BOOST_SERIALIZATION_NVP(m_pMinimumAnglePenalty);
     ar & BOOST_SERIALIZATION_NVP(m_pMinimumDistancePenalty);
     ar & BOOST_SERIALIZATION_NVP(m_pUseResponseExpansion);
@@ -2487,9 +2467,6 @@ public:
   double getParamFineSearchAngleOffset();
   double getParamCoarseSearchAngleOffset();
   double getParamCoarseAngleResolution();
-  double getParamLoopCoarseSearchAngleOffset();
-  double getParamLoopCoarseAngleResolution();
-  double getParamLoopFineSearchAngleOffset();
   double getParamMinimumAnglePenalty();
   double getParamMinimumDistancePenalty();
   bool getParamUseResponseExpansion();
@@ -2530,9 +2507,6 @@ public:
   void setParamFineSearchAngleOffset(double d);
   void setParamCoarseSearchAngleOffset(double d);
   void setParamCoarseAngleResolution(double d);
-  void setParamLoopCoarseSearchAngleOffset(double d);
-  void setParamLoopCoarseAngleResolution(double d);
-  void setParamLoopFineSearchAngleOffset(double d);
   void setParamMinimumAnglePenalty(double d);
   void setParamMinimumDistancePenalty(double d);
   void setParamUseResponseExpansion(bool b);
