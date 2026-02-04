@@ -24,6 +24,7 @@
 #include <queue>
 #include <algorithm>
 #include <chrono>
+#include <optional>
 #include <utility>
 #include <string>
 
@@ -699,6 +700,13 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////
+
+enum class LocalizationProcessingResult
+{
+  NONE,
+  POSE_CORRECTED,
+  SCAN_PROCESSED
+};
 
 class Mapper;
 class ScanMatcher;
@@ -2023,7 +2031,7 @@ public:
   kt_bool ProcessAtDock(LocalizedRangeScan * pScan, Matrix3 * covariance = nullptr);
   kt_bool ProcessAgainstNode(LocalizedRangeScan * pScan, const int & nodeId, Matrix3 * covariance = nullptr);
   kt_bool ProcessAgainstNodesNearBy(LocalizedRangeScan * pScan, kt_bool addScanToLocalizationBuffer = false, Matrix3 * covariance = nullptr);
-  kt_bool ProcessLocalization(LocalizedRangeScan * pScan, Matrix3 * covariance = nullptr);
+  LocalizationProcessingResult ProcessLocalization(LocalizedRangeScan * pScan, Matrix3 * covariance = nullptr);
   kt_bool RemoveNodeFromGraph(Vertex<LocalizedRangeScan> *);
   void AddScanToLocalizationBuffer(LocalizedRangeScan * pScan, Vertex<LocalizedRangeScan> * scan_vertex);
   void ClearLocalizationBuffer();
@@ -2184,6 +2192,10 @@ protected:
   MapperGraph * m_pGraph;
   ScanSolver * m_pScanOptimizer;
   LocalizationScanVertices m_LocalizationScanVertices;
+
+  // Latest odom→corrected pair from pose-only corrections (POSE_CORRECTED path).
+  // Used to keep the initial guess fresh between graph additions.
+  std::optional<std::pair<Pose2, Pose2>> m_LastLocalizationCorrection;
 
 
   std::vector<MapperListener *> m_Listeners;

@@ -222,8 +222,25 @@ LocalizedRangeScan * LocalizationSlamToolbox::addScan(
     update_reprocessing_transform = true;
     processor_type_ = PROCESS_LOCALIZATION;
   } else if (processor_type_ == PROCESS_LOCALIZATION) {
-    processed = smapper_->getMapper()->ProcessLocalization(range_scan, &covariance);
+    karto::Pose2 odom_predicted = range_scan->GetCorrectedPose();
+    auto result = smapper_->getMapper()->ProcessLocalization(range_scan, &covariance);
     update_reprocessing_transform = false;
+
+    if (result == karto::LocalizationProcessingResult::SCAN_PROCESSED) {
+      RCLCPP_INFO(get_logger(), "Scan processed and added to graph.");
+      processed = true;
+    } else if (result == karto::LocalizationProcessingResult::POSE_CORRECTED) {
+      RCLCPP_INFO(get_logger(), "Pose corrected without graph addition.");
+      setTransformFromPoses(range_scan->GetCorrectedPose(), odom_pose,
+        scan->header.stamp, update_reprocessing_transform);
+      publishPose(range_scan->GetCorrectedPose(), covariance, scan->header.stamp);
+      delete range_scan;
+      range_scan = nullptr;
+      return range_scan;
+    } else {
+      RCLCPP_INFO(get_logger(), "Scan rejected (no processing)");
+      processed = false;
+    }
   } else {
     RCLCPP_FATAL(get_logger(), "LocalizationSlamToolbox: "
       "No valid processor type set! Exiting.");

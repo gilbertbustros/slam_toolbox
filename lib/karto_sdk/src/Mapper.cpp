@@ -2874,10 +2874,10 @@ kt_bool Mapper::ProcessAgainstNodesNearBy(LocalizedRangeScan * pScan, kt_bool ad
   return false;
 }
 
-kt_bool Mapper::ProcessLocalization(LocalizedRangeScan * pScan, Matrix3 * covariance)
+LocalizationProcessingResult Mapper::ProcessLocalization(LocalizedRangeScan * pScan, Matrix3 * covariance)
 {
   if (pScan == NULL) {
-    return false;
+    return LocalizationProcessingResult::NONE;
   }
 
   karto::LaserRangeFinder * pLaserRangeFinder = pScan->GetLaserRangeFinder();
@@ -2886,7 +2886,7 @@ kt_bool Mapper::ProcessLocalization(LocalizedRangeScan * pScan, Matrix3 * covari
   if (pLaserRangeFinder == NULL || pScan == NULL ||
     pLaserRangeFinder->Validate(pScan) == false)
   {
-    return false;
+    return LocalizationProcessingResult::NONE;
   }
 
   if (m_Initialized == false) {
@@ -2898,35 +2898,58 @@ kt_bool Mapper::ProcessLocalization(LocalizedRangeScan * pScan, Matrix3 * covari
   LocalizedRangeScan * pLastScan = m_pMapperSensorManager->GetLastScan(
     pScan->GetSensorName());
 
-  // update scans corrected pose based on last correction
+  // Compute initial guess: use the freshest odom→corrected baseline available.
+  // m_LastLocalizationCorrection holds the latest pair from pose-only corrections,
+  // avoiding drift accumulation between graph additions.
   if (pLastScan != NULL) {
-    Transform lastTransform(pLastScan->GetOdometricPose(),
-      pLastScan->GetCorrectedPose());
+    Pose2 ref_odom, ref_corrected;
+    if (m_LastLocalizationCorrection) {
+      ref_odom = m_LastLocalizationCorrection->first;
+      ref_corrected = m_LastLocalizationCorrection->second;
+    } else {
+      ref_odom = pLastScan->GetOdometricPose();
+      ref_corrected = pLastScan->GetCorrectedPose();
+    }
+    Transform lastTransform(ref_odom, ref_corrected);
     pScan->SetCorrectedPose(lastTransform.TransformPose(
         pScan->GetOdometricPose()));
-  }
-
-  // test if scan is outside minimum boundary
-  // or if heading is larger then minimum heading
-  if (!HasMovedEnough(pScan, pLastScan)) {
-    return false;
   }
 
   Matrix3 cov;
   cov.SetToIdentity();
 
-  // correct scan (if not first scan)
+  // Always run scan matching when possible to correct odometry drift,
+  // even when the robot hasn't moved enough to warrant graph addition.
   if (m_pUseScanMatching->GetValue() && pLastScan != NULL) {
+    Pose2 initial_guess = pScan->GetSensorPose();
     Pose2 bestPose;
     m_pSequentialScanMatcher->MatchScan(pScan,
       m_pMapperSensorManager->GetRunningScans(pScan->GetSensorName()),
       bestPose,
       cov);
     pScan->SetSensorPose(bestPose);
+
+    double dx = bestPose.GetX() - initial_guess.GetX();
+    double dy = bestPose.GetY() - initial_guess.GetY();
+    double dh = bestPose.GetHeading() - initial_guess.GetHeading();
+    std::cout << "Scan match correction: dx=" << dx << " dy=" << dy << " dh=" << dh << std::endl;
+
     if (covariance) {
       *covariance = cov;
     }
   }
+
+  // Gate graph/buffer addition on movement threshold
+  if (!HasMovedEnough(pScan, pLastScan)) {
+    if (m_pUseScanMatching->GetValue() && pLastScan != NULL) {
+      m_LastLocalizationCorrection = {pScan->GetOdometricPose(), pScan->GetCorrectedPose()};
+      return LocalizationProcessingResult::POSE_CORRECTED;
+    }
+    return LocalizationProcessingResult::NONE;
+  }
+
+  // Scan is being added to graph — reset the cached correction
+  m_LastLocalizationCorrection.reset();
 
   // add scan to buffer and assign id
   m_pMapperSensorManager->AddScan(pScan);
@@ -2960,7 +2983,7 @@ kt_bool Mapper::ProcessLocalization(LocalizedRangeScan * pScan, Matrix3 * covari
   m_pMapperSensorManager->SetLastScan(pScan);
   AddScanToLocalizationBuffer(pScan, scan_vertex);
 
-  return true;
+  return LocalizationProcessingResult::SCAN_PROCESSED;
 }
 
 void Mapper::AddScanToLocalizationBuffer(LocalizedRangeScan * pScan, Vertex <LocalizedRangeScan> * scan_vertex)
