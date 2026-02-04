@@ -2786,6 +2786,11 @@ kt_bool Mapper::Process(LocalizedRangeScan * pScan, Matrix3 * covariance)
       }
     }
 
+    if (m_pGraph->HasNewConstraints()) {
+      std::cout << "Optimizing graph" << std::endl;
+      m_pGraph->CorrectPoses();
+    }
+
     m_pMapperSensorManager->SetLastScan(pScan);
 
     return true;
